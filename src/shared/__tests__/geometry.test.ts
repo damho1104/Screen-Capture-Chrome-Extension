@@ -19,11 +19,11 @@ describe('geometry helpers', () => {
     expect(scaleRect({ x: 10, y: 20, width: 30, height: 40 }, 2)).toEqual({ x: 20, y: 40, width: 60, height: 80 });
   });
 
-  it('creates vertical chunks without exceeding page height', () => {
+  it('creates vertical chunks using reachable scroll positions and source offsets', () => {
     expect(createVerticalChunks({ pageHeight: 1250, viewportHeight: 500 })).toEqual([
-      { scrollY: 0, height: 500 },
-      { scrollY: 500, height: 500 },
-      { scrollY: 1000, height: 250 }
+      { scrollY: 0, y: 0, height: 500 },
+      { scrollY: 500, y: 500, height: 500 },
+      { scrollY: 750, y: 1000, height: 250 }
     ]);
   });
 

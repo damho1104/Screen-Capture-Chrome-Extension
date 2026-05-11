@@ -20,6 +20,7 @@ export type Size = {
 
 export type VerticalChunk = {
   scrollY: number;
+  y: number;
   height: number;
 };
 

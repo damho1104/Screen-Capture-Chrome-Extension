@@ -17,7 +17,7 @@ export type ContentToBackgroundMessage =
   | { type: 'ELEMENT_CAPTURE_STARTED'; chunks: VerticalChunk[]; documentRect: Rect; pageWidth: number; pageHeight: number; devicePixelRatio: number }
   | { type: 'ELEMENT_CAPTURE_SCROLLED'; scrollY: number; viewportHeight: number }
   | { type: 'FULL_PAGE_PLAN_READY'; chunks: VerticalChunk[]; pageWidth: number; pageHeight: number; devicePixelRatio: number }
-  | { type: 'FULL_PAGE_SCROLLED'; scrollY: number; viewportHeight: number }
+  | { type: 'FULL_PAGE_SCROLLED'; scrollY: number; y: number; viewportHeight: number }
   | { type: 'CAPTURE_CANCELLED' }
   | { type: 'PREVIEW_SAVE_REQUESTED'; dataUrl: string }
   | { type: 'PREVIEW_RETRY_REQUESTED'; mode: CaptureMode };

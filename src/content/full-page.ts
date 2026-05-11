@@ -113,7 +113,7 @@ export function startFullPageCapture(): () => void {
       if (cancelled) return;
       overlay.host.style.visibility = 'hidden';
       try {
-        await chrome.runtime.sendMessage({ type: 'FULL_PAGE_SCROLLED', scrollY: chunk.scrollY, viewportHeight } satisfies ContentToBackgroundMessage);
+        await chrome.runtime.sendMessage({ type: 'FULL_PAGE_SCROLLED', scrollY: chunk.scrollY, y: chunk.y, viewportHeight } satisfies ContentToBackgroundMessage);
       } finally {
         overlay.host.style.visibility = 'visible';
       }

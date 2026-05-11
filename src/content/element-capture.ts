@@ -3,12 +3,18 @@ import { clampRectToViewport, createVerticalChunks } from '../shared/geometry';
 import type { Rect } from '../shared/types';
 import { createOverlayHost, installBaseStyles } from './overlay';
 
+const ELEMENT_CAPTURE_SETTLE_DELAY_MS = 650;
+
 function getViewportSize(): { width: number; height: number } {
   return { width: window.innerWidth, height: window.innerHeight };
 }
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function waitForNextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 function getElementViewportRect(element: Element): Rect {
@@ -161,8 +167,9 @@ export function startElementCapture(): () => void {
       for (const [index, chunk] of chunks.entries()) {
         toolbar.textContent = `캡처 처리 중... ${index + 1}/${chunks.length}`;
         window.scrollTo(0, chunk.scrollY);
-        await delay(300);
+        await delay(ELEMENT_CAPTURE_SETTLE_DELAY_MS);
         overlay.host.style.visibility = 'hidden';
+        await waitForNextFrame();
         try {
           await chrome.runtime.sendMessage({
             type: 'ELEMENT_CAPTURE_SCROLLED',
@@ -175,7 +182,6 @@ export function startElementCapture(): () => void {
       }
 
       toolbar.textContent = '캡처 이미지 처리 중...';
-      await new Promise(() => undefined);
     } finally {
       window.scrollTo(originalScrollX, originalScrollY);
     }

@@ -55,6 +55,11 @@ describe('startElementCapture', () => {
       scrollWidth: { configurable: true, value: 100 },
       clientWidth: { configurable: true, value: 100 }
     });
+    const animationFrameCallbacks: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
+      animationFrameCallbacks.push(callback);
+      return animationFrameCallbacks.length;
+    }));
 
     const target = document.createElement('button');
     document.body.append(target);
@@ -68,24 +73,44 @@ describe('startElementCapture', () => {
     const host = document.getElementById('screen-capture-extension-overlay');
     expect(host?.style.visibility).not.toBe('hidden');
     expect(getOverlayRoot().textContent).toContain('캡처 처리 중...');
-    await vi.runOnlyPendingTimersAsync();
-    await vi.runOnlyPendingTimersAsync();
-
+    await Promise.resolve();
     expect(sendMessage).toHaveBeenCalledWith({
       type: 'ELEMENT_CAPTURE_STARTED',
       chunks: [
-        { scrollY: 0, height: 80 },
-        { scrollY: 80, height: 60 }
+        { scrollY: 0, y: 0, height: 80 },
+        { scrollY: 60, y: 80, height: 60 }
       ],
       documentRect: { x: 10, y: 20, width: 80, height: 120 },
       pageWidth: 100,
       pageHeight: 180,
       devicePixelRatio: 2
     });
+
+    await vi.advanceTimersByTimeAsync(649);
+    expect(host?.style.visibility).not.toBe('hidden');
+    expect(sendMessage).not.toHaveBeenCalledWith({ type: 'ELEMENT_CAPTURE_SCROLLED', scrollY: 0, viewportHeight: 80 });
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(host?.style.visibility).toBe('hidden');
+    expect(sendMessage).not.toHaveBeenCalledWith({ type: 'ELEMENT_CAPTURE_SCROLLED', scrollY: 0, viewportHeight: 80 });
+
+    animationFrameCallbacks[0](0);
+    await Promise.resolve();
+    await Promise.resolve();
     expect(sendMessage).toHaveBeenCalledWith({ type: 'ELEMENT_CAPTURE_SCROLLED', scrollY: 0, viewportHeight: 80 });
-    expect(sendMessage).toHaveBeenCalledWith({ type: 'ELEMENT_CAPTURE_SCROLLED', scrollY: 80, viewportHeight: 80 });
-    expect(getOverlayRoot().textContent).toContain('캡처 이미지 처리 중...');
-    expect(document.getElementById('screen-capture-extension-overlay')).not.toBeNull();
+    expect(host?.style.visibility).toBe('visible');
+
+    await vi.advanceTimersByTimeAsync(650);
+    expect(host?.style.visibility).toBe('hidden');
+    expect(sendMessage).not.toHaveBeenCalledWith({ type: 'ELEMENT_CAPTURE_SCROLLED', scrollY: 60, viewportHeight: 80 });
+
+    animationFrameCallbacks[1](0);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(sendMessage).toHaveBeenCalledWith({ type: 'ELEMENT_CAPTURE_SCROLLED', scrollY: 60, viewportHeight: 80 });
+    expect(host?.style.visibility).toBe('visible');
+    await Promise.resolve();
+    expect(document.getElementById('screen-capture-extension-overlay')).toBeNull();
     target.remove();
     vi.useRealTimers();
   });

@@ -169,7 +169,7 @@ describe('service worker drag selection handling', () => {
 
     const startMessage: ContentToBackgroundMessage = {
       type: 'ELEMENT_CAPTURE_STARTED',
-      chunks: [{ scrollY: 40, height: 50 }, { scrollY: 90, height: 40 }],
+      chunks: [{ scrollY: 40, y: 40, height: 50 }, { scrollY: 90, y: 90, height: 40 }],
       documentRect: { x: 10, y: 40, width: 80, height: 90 },
       pageWidth: 100,
       pageHeight: 130,
@@ -214,7 +214,7 @@ describe('service worker drag selection handling', () => {
 
     const startMessage: ContentToBackgroundMessage = {
       type: 'ELEMENT_CAPTURE_STARTED',
-      chunks: [{ scrollY: 0, height: 50 }],
+      chunks: [{ scrollY: 0, y: 0, height: 50 }],
       documentRect: { x: 5, y: 6, width: 10, height: 15 },
       pageWidth: 100,
       pageHeight: 100,
@@ -263,6 +263,75 @@ describe('service worker drag selection handling', () => {
     vi.useRealTimers();
   });
 
+  it('waits between visible tab captures to stay under Chrome capture quota', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const chromeStub = installChromeStub();
+    const captureTimes: number[] = [];
+    chromeStub.captureVisibleTab.mockImplementation(async () => {
+      captureTimes.push(Date.now());
+      return captureTimes.length === 1 ? 'data:image/png;base64,top' : 'data:image/png;base64,bottom';
+    });
+    chromeStub.sendRuntimeMessage.mockResolvedValue({
+      type: 'IMAGE_PROCESSED',
+      result: { dataUrl: 'data:image/png;base64,merged', width: 1000, height: 1000, mode: 'drag' }
+    });
+    await import('../service-worker');
+
+    const sender = { tab: { id: 123, windowId: 456, active: true } as chrome.tabs.Tab };
+    runtimeListener?.({
+      type: 'FULL_PAGE_PLAN_READY',
+      chunks: [
+        { scrollY: 0, y: 0, height: 500 },
+        { scrollY: 500, y: 500, height: 500 }
+      ],
+      pageWidth: 1000,
+      pageHeight: 1000,
+      devicePixelRatio: 1
+    } satisfies ContentToBackgroundMessage, sender, vi.fn());
+
+    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, y: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, vi.fn());
+    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 500, y: 500, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, vi.fn());
+
+    await vi.advanceTimersByTimeAsync(550);
+    await vi.waitFor(() => expect(chromeStub.captureVisibleTab).toHaveBeenCalledTimes(2));
+    expect(captureTimes[1] - captureTimes[0]).toBeGreaterThanOrEqual(550);
+    vi.useRealTimers();
+  });
+
+  it('waits between visible tab capture attempts after a capture failure', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const chromeStub = installChromeStub();
+    const captureTimes: number[] = [];
+    chromeStub.captureVisibleTab.mockImplementation(async () => {
+      captureTimes.push(Date.now());
+      if (captureTimes.length === 1) throw new Error('quota');
+      return 'data:image/png;base64,bottom';
+    });
+    await import('../service-worker');
+
+    const sender = { tab: { id: 123, windowId: 456, active: true } as chrome.tabs.Tab };
+    runtimeListener?.({
+      type: 'FULL_PAGE_PLAN_READY',
+      chunks: [
+        { scrollY: 0, y: 0, height: 500 },
+        { scrollY: 500, y: 500, height: 500 }
+      ],
+      pageWidth: 1000,
+      pageHeight: 1000,
+      devicePixelRatio: 1
+    } satisfies ContentToBackgroundMessage, sender, vi.fn());
+
+    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, y: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, vi.fn());
+    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 500, y: 500, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, vi.fn());
+
+    await vi.advanceTimersByTimeAsync(550);
+    await vi.waitFor(() => expect(chromeStub.captureVisibleTab).toHaveBeenCalledTimes(2));
+    expect(captureTimes[1] - captureTimes[0]).toBeGreaterThanOrEqual(550);
+    vi.useRealTimers();
+  });
+
   it('captures full-page chunks from the sender window, merges images, and shows a full-page preview', async () => {
     const chromeStub = installChromeStub();
     chromeStub.captureVisibleTab.mockResolvedValueOnce('data:image/png;base64,top').mockResolvedValueOnce('data:image/png;base64,bottom');
@@ -277,17 +346,17 @@ describe('service worker drag selection handling', () => {
     const planHandled = runtimeListener?.({
       type: 'FULL_PAGE_PLAN_READY',
       chunks: [
-        { scrollY: 0, height: 500 },
-        { scrollY: 500, height: 250 }
+        { scrollY: 0, y: 0, height: 500 },
+        { scrollY: 500, y: 500, height: 250 }
       ],
       pageWidth: 1000,
       pageHeight: 750,
       devicePixelRatio: 1
     } satisfies ContentToBackgroundMessage, sender, planResponse);
     const firstResponse = vi.fn();
-    const firstHandled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, firstResponse);
+    const firstHandled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, y: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, firstResponse);
     const secondResponse = vi.fn();
-    const secondHandled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 500, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, secondResponse);
+    const secondHandled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 500, y: 500, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, secondResponse);
 
     expect(planHandled).toBe(false);
     expect(planResponse).toHaveBeenCalledWith({ ok: true });
@@ -328,9 +397,9 @@ describe('service worker drag selection handling', () => {
     runtimeListener?.({
       type: 'FULL_PAGE_PLAN_READY',
       chunks: [
-        { scrollY: 0, height: 500 },
-        { scrollY: 500, height: 500 },
-        { scrollY: 1000, height: 500 }
+        { scrollY: 0, y: 0, height: 500 },
+        { scrollY: 500, y: 500, height: 500 },
+        { scrollY: 1000, y: 1000, height: 500 }
       ],
       pageWidth: 1000,
       pageHeight: 1500,
@@ -338,12 +407,12 @@ describe('service worker drag selection handling', () => {
     } satisfies ContentToBackgroundMessage, sender, vi.fn());
 
     const firstResponse = vi.fn();
-    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, firstResponse);
+    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, y: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, firstResponse);
     await vi.waitFor(() => expect(firstResponse).toHaveBeenCalledWith({ ok: true }));
 
     vi.setSystemTime(new Date('2026-05-10T00:00:31.000Z'));
     const timeoutResponse = vi.fn();
-    const timeoutHandled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 500, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, timeoutResponse);
+    const timeoutHandled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 500, y: 500, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, timeoutResponse);
 
     expect(timeoutHandled).toBe(true);
     await vi.waitFor(() => expect(chromeStub.sendRuntimeMessage).toHaveBeenCalledWith({
@@ -371,7 +440,7 @@ describe('service worker drag selection handling', () => {
     const sender = { tab: { id: 123, windowId: 456, active: true } as chrome.tabs.Tab };
     runtimeListener?.({
       type: 'FULL_PAGE_PLAN_READY',
-      chunks: [{ scrollY: 0, height: 500 }],
+      chunks: [{ scrollY: 0, y: 0, height: 500 }],
       pageWidth: 1000,
       pageHeight: 500,
       devicePixelRatio: 1
@@ -379,7 +448,7 @@ describe('service worker drag selection handling', () => {
 
     vi.setSystemTime(new Date('2026-05-10T00:00:31.000Z'));
     const timeoutResponse = vi.fn();
-    const timeoutHandled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, timeoutResponse);
+    const timeoutHandled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, y: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, timeoutResponse);
 
     expect(timeoutHandled).toBe(true);
     await vi.waitFor(() => expect(chromeStub.sendTabMessage).toHaveBeenCalledWith(123, {
@@ -403,17 +472,17 @@ describe('service worker drag selection handling', () => {
     const sender = { tab: { id: 123, windowId: 456, active: true } as chrome.tabs.Tab };
     runtimeListener?.({
       type: 'FULL_PAGE_PLAN_READY',
-      chunks: [{ scrollY: 0, height: 500 }],
+      chunks: [{ scrollY: 0, y: 0, height: 500 }],
       pageWidth: 1000,
       pageHeight: 500,
       devicePixelRatio: 1
     } satisfies ContentToBackgroundMessage, sender, vi.fn());
-    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, vi.fn());
+    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, y: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, vi.fn());
     await vi.waitFor(() => expect(chromeStub.captureVisibleTab).toHaveBeenCalledTimes(1));
 
     runtimeListener?.({
       type: 'FULL_PAGE_PLAN_READY',
-      chunks: [{ scrollY: 0, height: 500 }],
+      chunks: [{ scrollY: 0, y: 0, height: 500 }],
       pageWidth: 800,
       pageHeight: 500,
       devicePixelRatio: 1
@@ -438,7 +507,7 @@ describe('service worker drag selection handling', () => {
       result: { dataUrl: 'data:image/png;base64,new-merged', width: 800, height: 500, mode: 'drag' }
     });
     const newResponse = vi.fn();
-    const newHandled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, newResponse);
+    const newHandled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, y: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, newResponse);
 
     expect(newHandled).toBe(true);
     await vi.waitFor(() => expect(chromeStub.sendRuntimeMessage).toHaveBeenCalledWith({
@@ -465,17 +534,17 @@ describe('service worker drag selection handling', () => {
     const sender = { tab: { id: 123, windowId: 456, active: true } as chrome.tabs.Tab };
     runtimeListener?.({
       type: 'FULL_PAGE_PLAN_READY',
-      chunks: [{ scrollY: 0, height: 500 }, { scrollY: 500, height: 500 }],
+      chunks: [{ scrollY: 0, y: 0, height: 500 }, { scrollY: 500, y: 500, height: 500 }],
       pageWidth: 1000,
       pageHeight: 1000,
       devicePixelRatio: 1
     } satisfies ContentToBackgroundMessage, sender, vi.fn());
     const firstResponse = vi.fn();
-    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, firstResponse);
+    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, y: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, firstResponse);
     await vi.waitFor(() => expect(firstResponse).toHaveBeenCalledWith({ ok: true }));
 
     vi.setSystemTime(new Date('2026-05-10T00:00:31.000Z'));
-    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 500, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, vi.fn());
+    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 500, y: 500, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, vi.fn());
     await vi.waitFor(() => expect(chromeStub.sendRuntimeMessage).toHaveBeenCalledWith({
       type: 'MERGE_VERTICAL_IMAGES',
       images: [{ dataUrl: 'data:image/png;base64,old', y: 0, height: 500 }],
@@ -487,7 +556,7 @@ describe('service worker drag selection handling', () => {
     vi.setSystemTime(new Date('2026-05-10T00:00:31.100Z'));
     runtimeListener?.({
       type: 'FULL_PAGE_PLAN_READY',
-      chunks: [{ scrollY: 0, height: 500 }],
+      chunks: [{ scrollY: 0, y: 0, height: 500 }],
       pageWidth: 800,
       pageHeight: 500,
       devicePixelRatio: 1
@@ -505,7 +574,7 @@ describe('service worker drag selection handling', () => {
       result: { dataUrl: 'data:image/png;base64,new-merged', width: 800, height: 500, mode: 'drag' }
     });
     const newResponse = vi.fn();
-    const newHandled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, newResponse);
+    const newHandled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, y: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, newResponse);
 
     expect(newHandled).toBe(true);
     await vi.waitFor(() => expect(chromeStub.sendRuntimeMessage).toHaveBeenCalledWith({
@@ -533,17 +602,17 @@ describe('service worker drag selection handling', () => {
     const sender = { tab: { id: 123, windowId: 456, active: true } as chrome.tabs.Tab };
     runtimeListener?.({
       type: 'FULL_PAGE_PLAN_READY',
-      chunks: [{ scrollY: 0, height: 500 }, { scrollY: 500, height: 500 }],
+      chunks: [{ scrollY: 0, y: 0, height: 500 }, { scrollY: 500, y: 500, height: 500 }],
       pageWidth: 1000,
       pageHeight: 1000,
       devicePixelRatio: 1
     } satisfies ContentToBackgroundMessage, sender, vi.fn());
     const firstResponse = vi.fn();
-    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, firstResponse);
+    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, y: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, firstResponse);
     await vi.waitFor(() => expect(firstResponse).toHaveBeenCalledWith({ ok: true }));
 
     vi.setSystemTime(new Date('2026-05-10T00:00:31.000Z'));
-    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 500, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, vi.fn());
+    runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 500, y: 500, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, vi.fn());
     await vi.waitFor(() => expect(chromeStub.sendRuntimeMessage).toHaveBeenCalledWith({
       type: 'MERGE_VERTICAL_IMAGES',
       images: [{ dataUrl: 'data:image/png;base64,old', y: 0, height: 500 }],
@@ -555,7 +624,7 @@ describe('service worker drag selection handling', () => {
     vi.setSystemTime(new Date('2026-05-10T00:00:31.100Z'));
     runtimeListener?.({
       type: 'FULL_PAGE_PLAN_READY',
-      chunks: [{ scrollY: 0, height: 500 }],
+      chunks: [{ scrollY: 0, y: 0, height: 500 }],
       pageWidth: 800,
       pageHeight: 500,
       devicePixelRatio: 1
@@ -574,7 +643,7 @@ describe('service worker drag selection handling', () => {
       result: { dataUrl: 'data:image/png;base64,new-merged', width: 800, height: 500, mode: 'drag' }
     });
     const newResponse = vi.fn();
-    const newHandled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, newResponse);
+    const newHandled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, y: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, newResponse);
 
     expect(newHandled).toBe(true);
     await vi.waitFor(() => expect(chromeStub.sendRuntimeMessage).toHaveBeenCalledWith({
@@ -595,14 +664,14 @@ describe('service worker drag selection handling', () => {
     const sender = { tab: { id: 123, windowId: 456, active: true } as chrome.tabs.Tab };
     runtimeListener?.({
       type: 'FULL_PAGE_PLAN_READY',
-      chunks: [{ scrollY: 0, height: 500 }],
+      chunks: [{ scrollY: 0, y: 0, height: 500 }],
       pageWidth: 1000,
       pageHeight: 500,
       devicePixelRatio: 1
     } satisfies ContentToBackgroundMessage, sender, vi.fn());
     runtimeListener?.({ type: 'CAPTURE_CANCELLED' } satisfies ContentToBackgroundMessage, sender, vi.fn());
 
-    const handled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, vi.fn());
+    const handled = runtimeListener?.({ type: 'FULL_PAGE_SCROLLED', scrollY: 0, y: 0, viewportHeight: 500 } satisfies ContentToBackgroundMessage, sender, vi.fn());
 
     expect(handled).toBe(false);
     expect(chromeStub.captureVisibleTab).not.toHaveBeenCalled();

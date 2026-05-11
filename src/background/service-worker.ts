@@ -120,6 +120,9 @@ function isContentToBackgroundMessage(message: unknown): message is ContentToBac
       'scrollY' in message &&
       typeof message.scrollY === 'number' &&
       Number.isFinite(message.scrollY) &&
+      'y' in message &&
+      typeof message.y === 'number' &&
+      Number.isFinite(message.y) &&
       'viewportHeight' in message &&
       isPositiveFiniteNumber(message.viewportHeight)
     );
@@ -220,8 +223,28 @@ export async function processCrop(
   return { ...response.result, mode };
 }
 
+const MIN_VISIBLE_TAB_CAPTURE_INTERVAL_MS = 550;
+let lastVisibleTabCaptureAt = -MIN_VISIBLE_TAB_CAPTURE_INTERVAL_MS;
+let visibleTabCaptureQueue = Promise.resolve();
+
+async function waitForVisibleTabCaptureSlot(): Promise<void> {
+  const waitMs = Math.max(0, MIN_VISIBLE_TAB_CAPTURE_INTERVAL_MS - (Date.now() - lastVisibleTabCaptureAt));
+  if (waitMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+}
+
 async function captureVisibleTab(windowId: number): Promise<string> {
-  return chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
+  const capture = visibleTabCaptureQueue.then(async () => {
+    await waitForVisibleTabCaptureSlot();
+    lastVisibleTabCaptureAt = Date.now();
+    return chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
+  });
+  visibleTabCaptureQueue = capture.then(
+    () => undefined,
+    () => undefined
+  );
+  return capture;
 }
 
 async function saveDataUrl(dataUrl: string): Promise<void> {
@@ -444,11 +467,11 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       const dataUrl = await captureVisibleTab(tab.windowId);
       session.images.push({
         dataUrl,
-        y: message.scrollY,
-        height: Math.max(0, Math.min(message.viewportHeight, session.pageHeight - message.scrollY))
+        y: message.y,
+        height: Math.max(0, Math.min(message.viewportHeight, session.pageHeight - message.y))
       });
 
-      if (message.scrollY + message.viewportHeight >= session.pageHeight) {
+      if (message.y + message.viewportHeight >= session.pageHeight) {
         await mergeFullPage(tabId, false, session);
       }
 

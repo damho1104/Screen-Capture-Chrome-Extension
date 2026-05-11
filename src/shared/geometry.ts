@@ -33,6 +33,8 @@ export function scaleRect(rect: Rect, scale: number): Rect {
   };
 }
 
+export type ScrollChunk = VerticalChunk;
+
 export function createVerticalChunks(input: { pageHeight: number; viewportHeight: number }): VerticalChunk[] {
   if (!Number.isFinite(input.pageHeight) || input.pageHeight <= 0) return [];
   if (!Number.isFinite(input.viewportHeight) || input.viewportHeight <= 0) {
@@ -40,15 +42,22 @@ export function createVerticalChunks(input: { pageHeight: number; viewportHeight
   }
 
   const chunks: VerticalChunk[] = [];
-  let scrollY = 0;
+  let y = 0;
 
-  while (scrollY < input.pageHeight) {
+  while (y < input.pageHeight) {
+    const remainingHeight = input.pageHeight - y;
+    const height = Math.min(input.viewportHeight, remainingHeight);
+    const scrollY = remainingHeight <= input.viewportHeight ? input.pageHeight - input.viewportHeight : y;
+
     chunks.push({
-      scrollY,
-      height: Math.min(input.viewportHeight, input.pageHeight - scrollY)
+      scrollY: Math.max(0, scrollY),
+      y,
+      height
     });
-    scrollY += input.viewportHeight;
+    y += input.viewportHeight;
   }
 
   return chunks;
 }
+
+export const createScrollChunks = createVerticalChunks;

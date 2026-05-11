@@ -74,17 +74,17 @@ describe('startFullPageCapture', () => {
     expect(sendMessage).toHaveBeenNthCalledWith(1, {
       type: 'FULL_PAGE_PLAN_READY',
       chunks: [
-        { scrollY: 0, height: 500 },
-        { scrollY: 500, height: 500 },
-        { scrollY: 1000, height: 250 }
+        { scrollY: 0, y: 0, height: 500 },
+        { scrollY: 500, y: 500, height: 500 },
+        { scrollY: 750, y: 1000, height: 250 }
       ],
       pageWidth: 1000,
       pageHeight: 1250,
       devicePixelRatio: 1
     });
-    expect(sendMessage).toHaveBeenNthCalledWith(2, { type: 'FULL_PAGE_SCROLLED', scrollY: 0, viewportHeight: 500 });
-    expect(sendMessage).toHaveBeenNthCalledWith(3, { type: 'FULL_PAGE_SCROLLED', scrollY: 500, viewportHeight: 500 });
-    expect(sendMessage).toHaveBeenNthCalledWith(4, { type: 'FULL_PAGE_SCROLLED', scrollY: 1000, viewportHeight: 500 });
+    expect(sendMessage).toHaveBeenNthCalledWith(2, { type: 'FULL_PAGE_SCROLLED', scrollY: 0, y: 0, viewportHeight: 500 });
+    expect(sendMessage).toHaveBeenNthCalledWith(3, { type: 'FULL_PAGE_SCROLLED', scrollY: 500, y: 500, viewportHeight: 500 });
+    expect(sendMessage).toHaveBeenNthCalledWith(4, { type: 'FULL_PAGE_SCROLLED', scrollY: 750, y: 1000, viewportHeight: 500 });
     expect(scrollTo).toHaveBeenLastCalledWith(7, 120);
     expect(document.getElementById('screen-capture-extension-overlay')).toBeNull();
   });
