@@ -1,0 +1,9 @@
+.openclaude
+.claude
+.DS_Store
+requirement-docs
+node_modules/
+dist/
+manual-test-pages/
+store-assets/
+docs/
