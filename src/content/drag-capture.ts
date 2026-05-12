@@ -1,6 +1,7 @@
 import type { ContentToBackgroundMessage } from '../shared/messages';
 import { clampRectToViewport, createRectFromPoints } from '../shared/geometry';
 import type { Point, Rect } from '../shared/types';
+import { waitForOverlayRemovalPaint } from './capture-timing';
 import { createOverlayHost, installBaseStyles } from './overlay';
 
 const MIN_SELECTION_SIZE = 8;
@@ -15,10 +16,6 @@ function applyRectangleStyle(element: HTMLElement, rect: Rect): void {
   element.style.top = `${rect.y}px`;
   element.style.width = `${rect.width}px`;
   element.style.height = `${rect.height}px`;
-}
-
-function waitForNextFrame(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 export function startDragCapture(): () => void {
@@ -97,20 +94,20 @@ export function startDragCapture(): () => void {
     overlay.host.style.cursor = 'wait';
     toolbar.textContent = '캡처 처리 중...';
     applyRectangleStyle(rectangle, rect);
-    overlay.host.style.visibility = 'hidden';
+    overlay.host.remove();
 
     const message: ContentToBackgroundMessage = { type: 'DRAG_AREA_SELECTED', rect, viewport: getViewportSize() };
-    void waitForNextFrame()
+    void waitForOverlayRemovalPaint()
       .then(() => chrome.runtime.sendMessage(message))
       .then((response: unknown) => {
         if (typeof response === 'object' && response !== null && 'ok' in response && response.ok === false) {
-          overlay.host.style.visibility = 'visible';
+          document.documentElement.append(overlay.host);
           toolbar.textContent = '캡처 처리에 실패했습니다. ESC로 닫기';
         }
       })
       .catch((error: unknown) => {
         console.error('[screen-capture] drag send failed', error);
-        overlay.host.style.visibility = 'visible';
+        document.documentElement.append(overlay.host);
         toolbar.textContent = '캡처 처리에 실패했습니다. ESC로 닫기';
       });
   };
